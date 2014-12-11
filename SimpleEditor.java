@@ -1,297 +1,468 @@
-// SimpleEditor.java
-// An example showing several DefaultEditorKit features. This class is designed
-// to be easily extended for additional functionality.
-//
 import javax.swing.*;
-import javax.swing.text.*;
-import java.awt.*;
-import java.io.*;
 import javax.swing.event.*;
+import java.awt.*; 
 import java.awt.event.*;
-import java.util.Hashtable;
-
-public class SimpleEditor extends JFrame {
-
-  private Action openAction = new OpenAction();
-  private Action saveAction = new SaveAction();
-
-  public static JTextArea lines;
-  private static JTextComponent textComp;
-  private Hashtable actionHash = new Hashtable();
+import java.util.Vector;
+import java.io.*;
 
 
-  private boolean fileSaved = false;
+//   A menu-based simple text editor. 
 
-  public static void main(String[] args) {
-    SimpleEditor editor = new SimpleEditor();
-    editor.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
+
+public class SimpleEditor extends JFrame implements ActionListener, DocumentListener
+{
+    
+    private static final long serialVersionUID = 2L;
+    private JMenuBar mBar = new JMenuBar();  // Create the menu bar
+    private JMenu fileMenu, editMenu, cutsMenu; // Menu references
+    private JMenuItem cutItem, copyItem, pasteItem, selectItem;
+    private JMenuItem quitItem, openItem;    // File items
+    private JMenuItem saveItem, saveAsItem, saveExitItem; // more File items
+    private JTextArea display = new JTextArea();  
+    private String scratchPad = "";       // Scratch pad for cut/paste
+    private Vector<String> recentCuts = new Vector<String>();
+
+    private File currentFile = new File("Untitled");
+    private String startDir; // the directory form where the editor was started
+    private JFileChooser openFileChooser, saveFileChooser;
+
+    // Keeps track of if file has been changed since last change
+    private boolean fileSaved = true;
+
+    //private JTextField statusLine = new JTextField(getContentPane().getWidth());
+    private JTextField statusLine = new JTextField(10);
+
+
+    private JMenu preferencesMenu, textColorMenu;
+    private JMenuItem fontItem, tabItem;
+    private JMenuItem [] colorItems;
+    private String [] fontValues = {"10", "12", "14", "16", "18", "20", "22", "24", "26", "28" ,"30"};
+    private Font defaultFont;
+    private int defaultFontSize = 10;;
+    private int defaultTabSize;
+    private String [] colorValues = {"red", "green", "blue", "black",
+                                            "orange", "cyan", "magenta"};
+
+        
+    
+    //  SimpleEditor() constructor sets the layout for the GUI
+    //   and calls methods to initialize the menus.
+    
+    public SimpleEditor() 
+    {
+        setTitle("Simple Text Editor");
+        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+
+        getContentPane().setLayout(new BorderLayout()); 
+        getContentPane().add("Center", display);    
+        getContentPane().add(
+            new JScrollPane(display, JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,
+            JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED));
+        
+        display.setLineWrap(true);
+        display.getDocument().addDocumentListener(this);
+
+        getContentPane().add("South", statusLine);
+        statusLine.setEditable(false);
+        this.setJMenuBar(mBar);         
+
+        initFileMenu();                
+        initEditMenu();    
+        initPreferencesMenu();
+
+        startDir = System.getProperty("user.dir");
+        openFileChooser = new JFileChooser(startDir);
+        saveFileChooser = new JFileChooser(startDir);
+        saveFileChooser.setDialogTitle("Save As");
+    } 
+    
+    
+    //    Creates the edit menu and adds its individual menu items. 
+    //    Note the each menu item is registered with an ActionListener.
+     
+    private void initEditMenu() 
+    {
+        editMenu = new JMenu("Edit");     // Create the edit menu
+        mBar.add(editMenu);           //  and add it to menu bar
+
+        cutItem = new JMenuItem ("Cut");          // Cut item
+        cutItem.addActionListener(this);
+        editMenu.add(cutItem);              
+        
+        copyItem = new JMenuItem("Copy");         // Copy item
+        copyItem.addActionListener(this);
+        editMenu.add(copyItem);
+        
+        pasteItem = new JMenuItem("Paste");       // Paste item
+        pasteItem.addActionListener(this);  
+        editMenu.add(pasteItem);
+        
+        editMenu.addSeparator();
+        
+        selectItem = new JMenuItem("Select All"); // Select item
+        selectItem.addActionListener(this); 
+        editMenu.add(selectItem);   
+        /*
+        editMenu.addSeparator();
+        
+        cutsMenu = new JMenu("Recent Cuts");      // Recent cuts submenu
+        editMenu.add(cutsMenu);
+        */
+    } 
+
+    
+    //   Creates the preferences menu and adds its individual menu items. 
+    
+    private void initPreferencesMenu() 
+    {
+        preferencesMenu = new JMenu("Preferences"); 
+        mBar.add(preferencesMenu);            //  and add it to menu bar
+
+        fontItem = new JMenuItem ("Font Size");          // Cut item
+        fontItem.addActionListener(this);
+        preferencesMenu.add(fontItem);              
+
+        tabItem = new JMenuItem ("Tab Size");          // Cut item
+        tabItem.addActionListener(this);
+        preferencesMenu.add(tabItem);               
+
+    } 
 
 
     
-    JScrollPane scroll = new JScrollPane (textComp, JScrollPane.VERTICAL_SCROLLBAR_ALWAYS, JScrollPane.HORIZONTAL_SCROLLBAR_ALWAYS);
-    scroll.setRowHeaderView(lines);
+    //    Creates the file menu and adds its individual menu items. 
+    //    Note the each menu item is registered with an ActionListener.
+    
+    private void initFileMenu() 
+    {
+        fileMenu = new JMenu("File");       // Create the file menu
+        mBar.add(fileMenu);                 // and add it to the menu bar
+        
+        openItem = new JMenuItem("Open");   // Open item
+        openItem.addActionListener( this );
+        fileMenu.add(openItem);
 
-editor.add(scroll);
-    editor.setVisible(true);
-  }
+        saveItem = new JMenuItem("Save");   // Save item
+        saveItem.addActionListener(this);
+        fileMenu.add(saveItem); 
 
-  // Create an editor.
-  public SimpleEditor() {
-    super("AziEditor");
-    textComp = createTextComponent();
-    makeActionsPretty();
+        saveAsItem = new JMenuItem("Save As");   // Save As item
+        saveAsItem.addActionListener(this);
+        fileMenu.add(saveAsItem);   
 
-    Container content = getContentPane();
-    content.add(textComp, BorderLayout.SOUTH);
-    content.add(createToolBar(), BorderLayout.NORTH);
-    setJMenuBar(createMenuBar());
-    setSize(768,512);
-  }
+        fileMenu.addSeparator();            // Logical separator
 
-  // Create the JTextComponent subclass.
-  protected JTextComponent createTextComponent()  {
-    JTextArea ta = new JTextArea();
-    //ta.setLineWrap(true);
-    Font font = new Font("Serif", Font.ITALIC, 20);
-    //Font font = new Font("Verdana", Font.BOLD, 16);
-	ta.setFont(font);
-	ta.setBackground(Color.DARK_GRAY);
-    ta.setForeground(Color.WHITE);
-	//ta.setForeground(Color.BLUE);
-	ta.setLineWrap(true);
-	ta.setWrapStyleWord(true);
+        saveExitItem = new JMenuItem("Save-Exit");   // Save item
+        saveExitItem.addActionListener(this);
+        fileMenu.add(saveExitItem); 
 
-
-	
-
-
-	lines = new JTextArea("1");
-	lines.setFont(font);
-	lines.setBackground(Color.GRAY);
-	lines.setForeground(Color.BLACK);
-	lines.setEditable(false);
- 
-	ta.getDocument().addDocumentListener(new DocumentListener(){
-			public String getText(){
-				int caretPosition = ta.getDocument().getLength();
-				Element root = ta.getDocument().getDefaultRootElement();
-				String text = "1  " + System.getProperty("line.separator");
-				for(int i = 2; i < root.getElementIndex( caretPosition ) + 2; i++){
-					text += i +"  " +System.getProperty("line.separator");
-				}
-				return text;
-			}
-			@Override
-			public void changedUpdate(DocumentEvent de) {
-				lines.setText(getText());
-			}
- 
-			@Override
-			public void insertUpdate(DocumentEvent de) {
-				lines.setText(getText());
-			}
- 
-			@Override
-			public void removeUpdate(DocumentEvent de) {
-				lines.setText(getText());
-			}
- 
-		});
- 
-		
-
-
-
-
-    return ta;
-  }
-
-  // Add icons and friendly names to actions we care about.
-  protected void makeActionsPretty() {
-    Action a;
-    a = textComp.getActionMap().get(DefaultEditorKit.cutAction);
-    a.putValue(Action.SMALL_ICON, new ImageIcon("support/cut.gif"));
-    a.putValue(Action.NAME, "Cut");
-
-    a = textComp.getActionMap().get(DefaultEditorKit.copyAction);
-    a.putValue(Action.SMALL_ICON, new ImageIcon("support/copy.gif"));
-    a.putValue(Action.NAME, "Copy");
-
-    a = textComp.getActionMap().get(DefaultEditorKit.pasteAction);
-    a.putValue(Action.SMALL_ICON, new ImageIcon("support/paste.gif"));
-    a.putValue(Action.NAME, "Paste");
-
-    a = textComp.getActionMap().get(DefaultEditorKit.selectAllAction);
-    a.putValue(Action.NAME, "Select All");
-  }
-
-  // Create a simple JToolBar with some buttons.
-  protected JToolBar createToolBar() {
-    JToolBar bar = new JToolBar();
-
-    // Add simple actions for opening & saving.
-    bar.add(getOpenAction()).setText("");
-    bar.add(getSaveAction()).setText("");
-    bar.addSeparator();
-
-    // Add cut/copy/paste buttons.
-    bar.add(textComp.getActionMap().get(DefaultEditorKit.cutAction)).setText("");
-    bar.add(textComp.getActionMap().get(
-              DefaultEditorKit.copyAction)).setText("");
-    bar.add(textComp.getActionMap().get(
-              DefaultEditorKit.pasteAction)).setText("");
-    return bar;
-  }
-
-  // Create a JMenuBar with file & edit menus.
-  protected JMenuBar createMenuBar() {
-    JMenuBar menubar = new JMenuBar();
-    JMenu file = new JMenu("File");
-    JMenu edit = new JMenu("Edit");
-    menubar.add(file);
-    menubar.add(edit);
-
-    file.add(getOpenAction());
-    file.add(getSaveAction());
-    file.add(new ExitAction());
-    edit.add(textComp.getActionMap().get(DefaultEditorKit.cutAction));
-    edit.add(textComp.getActionMap().get(DefaultEditorKit.copyAction));
-    edit.add(textComp.getActionMap().get(DefaultEditorKit.pasteAction));
-    edit.add(textComp.getActionMap().get(DefaultEditorKit.selectAllAction));
-    return menubar;
-  }
-
-  // Subclass can override to use a different open action.
-  protected Action getOpenAction() { return openAction; }
-
-  // Subclass can override to use a different save action.
-  protected Action getSaveAction() { return saveAction; }
-
-  protected JTextComponent getTextComponent() { return textComp; }
-
-  // ********** ACTION INNER CLASSES ********** //
-
-  // A very simple exit action
-  
-  // An action that opens an existing file
-  class OpenAction extends AbstractAction {
-    public OpenAction() { 
-      super("Open", new ImageIcon("support/open.gif")); 
+        quitItem = new JMenuItem("Quit");   // Quit item
+        quitItem.addActionListener(this);
+        fileMenu.add(quitItem); 
+    } 
+        
+    
+    //    Listen for text changes to update the status line.
+    
+    public void changedUpdate(DocumentEvent e)
+    {
+        displayStatus("");
+        fileSaved = false;
     }
 
-    // Query user for a filename and attempt to open and read the file into the
-    // text component.
-    public void actionPerformed(ActionEvent ev) {
-      JFileChooser chooser = new JFileChooser();
-      if (chooser.showOpenDialog(SimpleEditor.this) !=
-          JFileChooser.APPROVE_OPTION)
-        return;
-      File file = chooser.getSelectedFile();
-      if (file == null)
-        return;
+    
+    // Update status for insert
+    
+    public void insertUpdate(DocumentEvent e) 
+    {
+        displayStatus("");
+        fileSaved = false;
+    }
 
-      FileReader reader = null;
-      try {
-        reader = new FileReader(file);
-        textComp.read(reader, null);
-      }
-      catch (IOException ex) {
-        JOptionPane.showMessageDialog(SimpleEditor.this,
-        "File Not Found", "ERROR", JOptionPane.ERROR_MESSAGE);
-      }
-      finally {
-        if (reader != null) {
-          try {
-            reader.close();
-          } catch (IOException x) {}
+    
+    // * Update status for remove
+
+    public void removeUpdate(DocumentEvent e) 
+    {
+        displayStatus("");
+        fileSaved = false;
+    }
+
+    
+    //    Display a status line.
+    
+    private void displayStatus(String message)
+    {
+        if (display.getLineCount() >= 0)
+            statusLine.setText(" "+currentFile.getName()+" "+
+                display.getLineCount()+" lines "
+                +display.getText().length()+" chars "+message);
+    }
+
+    
+    //    Display a status line with an optional filename parameter.
+       private void displayStatus(File fileobj, String message)
+    {
+        if (display.getLineCount() >= 0)
+            statusLine.setText(" "+fileobj.getName()+" "+
+                display.getLineCount()+" lines "
+                +display.getText().length()+" chars "+message);
+    }
+
+
+      
+    //       Handles the user's menu selections.
+
+    public void actionPerformed(ActionEvent e) 
+    {
+        // Get the selected menu item
+    
+    JMenuItem m  = (JMenuItem)e.getSource();  
+
+        if (m == fontItem)
+        {
+            selectAndSetFont();
         }
-      }
-    }
-  }
-
-  // An action that saves the document to a file
-  class SaveAction extends AbstractAction {
-    public SaveAction() {
-      super("Save", new ImageIcon("support/save.gif"));
-    }
-
-    // Query user for a filename and attempt to open and write the text
-    // componentâ€™s content to the file.
-    public void actionPerformed(ActionEvent ev) {
-      JFileChooser chooser = new JFileChooser();
-      fileSaved=true;
-      if (chooser.showSaveDialog(SimpleEditor.this) !=
-          JFileChooser.APPROVE_OPTION)
-        return;
-      File file = chooser.getSelectedFile();
-      if (file == null)
-        return;
-
-      FileWriter writer = null;
-      try {
-        writer = new FileWriter(file);
-        textComp.write(writer);
-      }
-      catch (IOException ex) {
-        JOptionPane.showMessageDialog(SimpleEditor.this,
-        "File Not Saved", "ERROR", JOptionPane.ERROR_MESSAGE);
-      }
-      finally {
-        if (writer != null) {
-          try {
-            writer.close();
-          } catch (IOException x) {}
+        else if ( m == tabItem ) 
+        {
+            selectAndSetTab();
         }
-      }
-    }
-  }
-  public  int writeFile()
-  {
-  	JFileChooser chooser = new JFileChooser();
-      if (chooser.showSaveDialog(SimpleEditor.this) !=
-          JFileChooser.APPROVE_OPTION)
-        return 1;
-    File file = chooser.getSelectedFile();
-      if (file == null)
-        return 0;
+        else if ( m == saveExitItem ) 
+        {
+            writeFile();
+            quitEditor();
+        } 
+        /*else if (isColorItem(m))
+        {
+            // get the text associated with the menu item
+            String color = m.getActionCommand();
 
-      FileWriter writer = null;
-      try {
-        writer = new FileWriter(file);
-        textComp.write(writer);
-      }
-      catch (IOException ex) {
-        JOptionPane.showMessageDialog(SimpleEditor.this,
-        "File Not Saved", "ERROR", JOptionPane.ERROR_MESSAGE);
-      }
-      finally {
-        if (writer != null) {
-          try {
-            writer.close();
-          } catch (IOException x) {}
+            Color newColor = findColor(color);
+            display.setForeground(newColor);
+        }*/
+        else if ( m == quitItem ) 
+        {
+            quitEditor();
+        } 
+        else if (m == openItem) 
+        {
+            openAndReadFile();
+        } 
+        else if (m == saveItem) 
+        {
+            writeFile();
         }
-  }
-  return 0;
-}
-public class ExitAction extends AbstractAction {
-    public ExitAction() { super("Exit"); }
-    public void actionPerformed(ActionEvent ev) {  
-    		//if(fileSaved)	System.exit(0);
-			int returnValue = JOptionPane.showConfirmDialog(null, "Save File?","Save File?", JOptionPane.YES_NO_OPTION);
-			if (returnValue == JOptionPane.YES_OPTION)
-			{	int r= writeFile();
-				if(r==1)
-					return;
-				System.exit(0);
-			}
-			else  if (returnValue == JOptionPane.NO_OPTION)
-			{	System.exit(0);
-			}
-		
-		
-	}
-  }
-  
+        else if (m == saveAsItem) 
+        {
+            openAndSaveFile();
+        }
+        else if (m == cutItem) 
+        {  
+            // Cut the selected text
+            scratchPad = display.getSelectedText();
+            display.replaceRange("",display.getSelectionStart(),display.getSelectionEnd());
+        } 
+        else if (m == copyItem) 
+        {  
+            scratchPad = display.getSelectedText();
+        } 
+        else if (m == pasteItem) 
+        {
+            display.insert(scratchPad, display.getCaretPosition()); 
+        } 
+        else if ( m == selectItem ) 
+        {               
+            display.selectAll();                
+        } 
+        else
+        {
+            JMenuItem item = (JMenuItem)e.getSource(); 
+            scratchPad = item.getActionCommand();    
+        }              
+    } 
 
- }
+
+    
+    //    Create a dialog with user to set up font size.
+    
+    private void selectAndSetFont()
+    {
+        
+        String fontSize = (String) JOptionPane.showInputDialog(null, "Select Font Size", 
+                                                    "Font Size Selector", 
+                                                    JOptionPane.QUESTION_MESSAGE, 
+                                                    null, 
+                                                    fontValues, fontValues[0]);
+        if (fontSize != null)
+        {
+            defaultFontSize = Integer.parseInt(fontSize);
+            defaultFont = new Font("Serif", Font.PLAIN, defaultFontSize );
+            display.setFont(defaultFont);
+        }
+
+    }
+
+    
+    //    Create a dialog with user to set up tab size.
+    
+    private void selectAndSetTab()
+    {
+        String tabSize = (String) JOptionPane.showInputDialog(this, "Select Tab Size"); 
+        if (tabSize != null)
+        {
+            defaultTabSize = Integer.parseInt(tabSize);
+            display.setTabSize(defaultTabSize);
+        }
+    }
+
+
+    
+    //    Confirm with the user  to save modified file before quitting the editor.
+    
+    private void quitEditor()
+    {
+        if (!fileSaved)
+        {
+            int returnValue = JOptionPane.showConfirmDialog(this, "Save File?");
+            if (returnValue == JOptionPane.YES_OPTION)
+                writeFile();
+            else  if (returnValue == JOptionPane.CANCEL_OPTION)
+                return;
+        } 
+        System.exit(0);
+    }
+
+
+    
+    private void openAndReadFile()
+    {
+        // if current file is modified, confirm for save
+        if (!fileSaved)
+        {
+            int returnValue = JOptionPane.showConfirmDialog(this, 
+                                                       "Save Current File?");
+            if (returnValue == JOptionPane.YES_OPTION)
+                writeFile();
+            if (returnValue == JOptionPane.CANCEL_OPTION)
+                return;
+        } 
+        // clear text area to open new file
+        display.setText("");
+        displayStatus("");
+        // set up a new default file name
+        currentFile = new File("Untitled");
+
+        int returnVal = openFileChooser.showOpenDialog(getContentPane());
+        if (returnVal == JFileChooser.APPROVE_OPTION)
+        {
+            currentFile =  openFileChooser.getSelectedFile();
+            try 
+            {
+                BufferedReader in = new BufferedReader(
+                                        new FileReader(currentFile));
+                display.read(in, null);
+                // Need to add the DocumentListener again since read replaces
+                // the Document object.
+                display.getDocument().addDocumentListener(this);
+                display.setCaretPosition(display.getDocument().getLength()-1);
+                displayStatus(" read");
+                fileSaved = true;
+            } 
+            catch (FileNotFoundException e) 
+            {
+                try
+                {
+                    currentFile.createNewFile();
+                    statusLine.setText(currentFile.getName()+"  [New file]");
+                } 
+                catch (IOException e1) 
+                {
+                    String message = e1.getMessage();
+                    JOptionPane.showMessageDialog(this, message);
+                }
+            } 
+            catch (IOException e)
+            {
+                String message = e.getMessage();
+                JOptionPane.showMessageDialog(this, message);
+            }
+        }
+    }
+
+    private void writeFile()
+    {
+        try 
+        {
+            FileWriter out = new FileWriter(currentFile);
+            display.write(out);
+            out.close();
+            displayStatus(" written");
+            fileSaved = true;
+        } 
+        catch (IOException e) 
+        {
+            String message = e.getMessage();
+            JOptionPane.showMessageDialog(this, message);
+        }
+
+    } 
+
+    
+    //    Save edited file to specified file.
+    
+    private void writeFile(File saveFile)
+    {
+        try 
+        {
+            FileWriter out = new FileWriter(saveFile);
+            display.write(out);
+            out.close();
+            displayStatus(saveFile, " written");
+            fileSaved = true;
+        } 
+        catch (IOException e) 
+        {
+            String message = e.getMessage();
+            JOptionPane.showMessageDialog(this, message);
+        }
+
+    } 
+    
+    
+    private void openAndSaveFile()
+    {
+        File saveFile;
+
+
+        int returnVal = saveFileChooser.showSaveDialog(getContentPane());
+        if (returnVal == JFileChooser.APPROVE_OPTION)
+        {
+            saveFile =  saveFileChooser.getSelectedFile();
+            if (saveFile.exists())
+            {
+                int returnValue = JOptionPane.showConfirmDialog(this,
+                        "Overwrite Existing File: "+saveFile.getName()+"?",
+                        "Question", JOptionPane.YES_NO_OPTION);
+                if (returnValue != JOptionPane.YES_OPTION)
+                    return;
+            }
+            writeFile(saveFile);
+        } 
+    }
+
+
+
+    public static void main(String args[]) 
+    {
+        // Need to make the variable f final so it can be accessed from the
+        // inner class in the addWindowListener call below.
+        final SimpleEditor f = new SimpleEditor(); 
+
+        f.setSize(800, 600);  
+        f.setVisible(true);
+        f.addWindowListener(new WindowAdapter() {
+               public void windowClosed(WindowEvent e) {f.quitEditor();}
+        });
+    } 
+} 
